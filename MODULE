@@ -1,0 +1,206 @@
+#include <stm32f401xe.h>
+#include "i2c.h"
+#include "LiquidCrystal_PCF8574.h"
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include "ctype.h"
+#include "string.h"
+#include "uart.h"
+
+ unsigned char dato;
+ unsigned char datos[50];
+ int AD_C= 0;
+ int AD_C1= 0;
+ char texto [200];
+ char tex [200];
+ unsigned char tem;
+ int flims;
+  double flimi,slims,slimi;
+
+
+void led_play(int value)
+{
+value %=16; 
+	for (;value>0;value--){
+	GPIOA->BSRR|=GPIO_BSRR_BS5; //turn on ledd
+		delay(100);
+		GPIOA->BSRR|=GPIO_BSRR_BR5; //turn off the led		
+		delay(100);
+	}
+}
+
+double Conv(int d){
+	return (double)3.3*d/4095.0;
+}
+
+uint8_t *getString(void){
+		uint8_t tempi2[51];
+	int indi;
+	for(int r=0; r<51; r++){
+			//UART6_GetString();
+			if(tempi2[r-1]==0x0D||tempi2[r-1]==0x0A){
+				indi=r;
+				break;
+			} else {
+				tempi2[r]=UART6_GetChar();
+			}		
+	}
+	for(int r=0;r<10;r++ ){
+		if(tempi2[r]==0x20){
+			tempi2[r]=0x0A;
+			texto2[r]=0x0A;
+		} else{
+		texto2[r]=tempi2[r];}
+	}
+	return tempi2;
+}
+
+void menuu(char let[]){
+	//UART6_SendString(let);
+	uint8_t tem,tem2;
+	uint8_t lec[10], *lex;
+sprintf(texto,"1");
+	UART6_SendString(texto);
+	if(strcmp(let,"\nconf\r")==0){
+	//if(let=='c'||let=='C'){
+		sprintf(texto,"Configuracion sensor 1(1) o sensor 2(2):\n");
+		while(1){
+		UART6_SendString(texto);
+		tem=UART6_GetChar();
+		if(tem=='1'){
+			sprintf(texto,"Limite superior:");
+			UART6_SendString(texto);
+			tem2=UART6_GetChar();
+			sprintf(lec,"%0.3f",getString());
+			flims=atoi(lec);
+			sprintf(texto,"%d",flims);
+			UART6_SendString(texto);
+			//flims=strtod(lec,&lex);
+			sprintf(texto,"Limite inferior:");
+			UART6_SendString(texto);
+			tem2=UART6_GetChar();
+			flimi=strtod(getString(),&lex);
+			sprintf(texto,"1s");
+			UART6_SendString(texto);
+
+			return;
+			}
+		if(tem=='2'){
+			sprintf(texto,"Limite superior:");
+			UART6_SendString(texto);
+			tem2=UART6_GetChar();
+			slims=strtod(getString(),&lec);
+			sprintf(texto,"Limite inferior:");
+			UART6_SendString(texto);
+			tem2=UART6_GetChar();
+			slimi=strtod(getString(),&lec);			
+			sprintf(texto,"2s");
+			UART6_SendString(texto);
+
+			return;
+			}
+		}
+		return;
+	}
+	if(strcmp(let,"\ntemp\r")==0){
+	//if(let=='t'||let=='T'){
+		sprintf(texto,"Sensor 1: %0.2f v %0.2f grados\r\n",
+		Conv(AD_C),Conv(AD_C)*100);
+		UART6_SendString(texto);
+		sprintf(texto,"Sensor 2: %0.2f v %0.2f grados\r\n",
+		Conv(AD_C1),Conv(AD_C1)*100);
+		UART6_SendString(texto);
+		return;
+	}
+	
+	return;
+}
+
+	void USART6_IRQHandler(void)
+	{
+	
+	led_play(5000);
+	//texto[0] = USART6->DR;
+////	uint8_t tempi2[51];
+////	int indi;
+////	for(int r=0; r<51; r++){
+////			//UART6_GetString();
+////			if(tempi2[r-1]==0x0D||tempi2[r-1]==0x0A){
+////				indi=r;
+////				break;
+////			} else {
+////				tempi2[r]=UART6_GetChar();
+////			}		
+////	}
+////	for(int r=0;r<10;r++ ){
+////		texto2[r]=tempi2[r];
+////	}
+	dato=USART6->SR;//Limpiar banderas
+
+	menuu(getString());
+//	sprintf(texto,"2");
+//	UART6_SendString(texto);
+		
+
+	}
+
+
+int main(void)
+
+{
+ // Configuración del ADC1 
+ RCC->APB2ENR|=RCC_APB2ENR_ADC1EN;// Se activa el módulo ADC1
+ ADC->CCR=(3UL<<16);// Se hace ADCCLK=PCLK2/8
+ ADC1->CR1=0;
+ ADC1->CR2|=ADC_CR2_ADON;// Se activa modulo ADC1
+ ADC1->SMPR1=0xFFFFFFFF;// Se fija máximo tiempo de muestreo
+ ADC1->SMPR2=0xFFFFFFFF;// Se fija máximo tiempo de muestreo
+ ADC1->SQR1=0;// Se fijan todas las secuencias en 0
+ ADC1->SQR2=0;// Se fijan todas las secuencias en 0
+ ADC1->SQR3=1;// Se fijan todas las secuencias en 1
+	 // Configuración pin PA0 análogo
+ RCC->AHB1ENR|=RCC_AHB1ENR_GPIOAEN;// Activa reloj GPIOA
+ GPIOA->MODER|=15UL;// Activa PA0 y A1 análogo
+	
+	USART6_Init();
+	
+	GPIOA->MODER|= GPIO_MODER_MODER5_0; //PA5 as output
+	i2c_init();
+	lcd_init();
+	lcd_clear();
+	int filt=0;
+while(1)
+{		
+ // Lectura de canal ADC 0
+	if(filt==1){
+		ADC1->SQR3=0;
+		ADC1->CR2|=ADC_CR2_SWSTART;                    // Se inicia la rutina de conversión
+		while(!(ADC1->SR&ADC_SR_EOC));                 // Se espera al fin de la conversión
+		AD_C =(unsigned int)ADC1->DR;                  // Se guarda el valor convertido en la variable
+		
+			ADC1->SQR3=1;
+		ADC1->CR2|=ADC_CR2_SWSTART;                    // Se inicia la rutina de conversión
+		while(!(ADC1->SR&ADC_SR_EOC));                 // Se espera al fin de la conversión
+		AD_C1 =(unsigned int)ADC1->DR;                 // Se guarda el valor convertido en GPIOC
+
+		setCursor(0,0);
+		lcd_send_string("Sensor 1: ");
+		char pa[10];
+		sprintf(pa, "%0.2f", Conv(AD_C)*100);
+		//sprintf(pa, "%d", texto2);
+		lcd_send_string(pa);
+		setCursor(0,1);
+		lcd_send_string("Sensor 2: ");
+		sprintf(pa, "%0.2f", Conv(AD_C1)*100);
+		lcd_send_string(pa);	
+	
+	
+		}
+	if(filt<500000){
+		filt++;}
+	else{filt=0;}
+	
+	}
+
+}
